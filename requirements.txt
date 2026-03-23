@@ -1,0 +1,9 @@
+opencv-python
+mediapipe
+ultralytics
+numpy
+pandas
+scipy
+matplotlib
+tqdm
+pyyaml
