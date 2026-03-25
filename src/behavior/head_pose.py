@@ -3,7 +3,6 @@ import numpy as np
 
 
 class HeadPoseEstimator:
-    # Approximate MediaPipe landmark indices
     NOSE_TIP = 1
     CHIN = 152
     LEFT_EYE_OUTER = 33
@@ -26,7 +25,6 @@ class HeadPoseEstimator:
             self._to_xy(face_landmarks[self.RIGHT_MOUTH], w, h),
         ], dtype="double")
 
-        # Generic 3D face model points
         model_points = np.array([
             (0.0, 0.0, 0.0),
             (0.0, -63.6, -12.5),
@@ -38,6 +36,7 @@ class HeadPoseEstimator:
 
         focal_length = w
         center = (w / 2, h / 2)
+
         camera_matrix = np.array([
             [focal_length, 0, center[0]],
             [0, focal_length, center[1]],
@@ -61,9 +60,9 @@ class HeadPoseEstimator:
         proj_matrix = np.hstack((rotation_matrix, translation_vector))
         _, _, _, _, _, _, euler_angles = cv2.decomposeProjectionMatrix(proj_matrix)
 
-        pitch = float(euler_angles[0, 0])
-        yaw = float(euler_angles[1, 0])
-        roll = float(euler_angles[2, 0])
+        pitch = self._normalize_angle(float(euler_angles[0, 0]))
+        yaw = self._normalize_angle(float(euler_angles[1, 0]))
+        roll = self._normalize_angle(float(euler_angles[2, 0]))
 
         return {
             "yaw": yaw,
@@ -74,3 +73,19 @@ class HeadPoseEstimator:
     @staticmethod
     def _to_xy(landmark, width, height):
         return [landmark.x * width, landmark.y * height]
+
+    @staticmethod
+    def _normalize_angle(angle):
+        """
+        Convert angle to stable range [-180, 180], then map very large wrap-around
+        values close to 180/-180 back toward 0 for practical head-pose use.
+        """
+        angle = (angle + 180) % 360 - 180
+
+        # Optional stabilization for values near ±180 that often appear from decomposition
+        if angle > 90:
+            angle -= 180
+        elif angle < -90:
+            angle += 180
+
+        return angle

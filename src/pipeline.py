@@ -10,6 +10,7 @@ from src.behavior.head_pose import HeadPoseEstimator
 from src.behavior.eye_gaze import EyeGazeEstimator
 from src.behavior.mouth_activity import MouthActivityEstimator
 from src.behavior.body_posture import BodyPostureEstimator
+from src.behavior.baseline import BaselineEstimator
 from src.rules.temporal_buffer import TemporalBuffer
 from src.rules.rule_engine import RuleEngine
 from src.utils.drawing import draw_status
@@ -30,6 +31,7 @@ class CheatingDetectionPipeline:
         self.mouth_estimator = MouthActivityEstimator()
         self.body_posture_estimator = BodyPostureEstimator()
 
+        self.baseline_estimator = BaselineEstimator(required_frames=30)
         self.temporal_buffer = TemporalBuffer(maxlen=config.rules.buffer_size)
         self.rule_engine = RuleEngine(config.rules)
 
@@ -74,8 +76,23 @@ class CheatingDetectionPipeline:
                     "body_present": pose_landmarks is not None,
                 }
 
-                self.temporal_buffer.update(features)
-                decision = self.rule_engine.evaluate(self.temporal_buffer)
+                self.baseline_estimator.update(features)
+
+                if not self.baseline_estimator.is_ready:
+                    decision = {
+                        "status": "calibrating",
+                        "reasons": ["collecting_baseline"],
+                    }
+                else:
+                    baseline = self.baseline_estimator.get()
+                    # if features["head_pose"] is not None:
+                    #     print(
+                    #             f"Baseline pitch={baseline['pitch']:.2f}, "
+                    #             f"Current pitch={features['head_pose']['pitch']:.2f}, "
+                    #             f"Diff={features['head_pose']['pitch'] - baseline['pitch']:.2f}"
+                    #     )
+                    self.temporal_buffer.update(features)
+                    decision = self.rule_engine.evaluate(self.temporal_buffer, baseline)
 
             output_frame = draw_status(frame.copy(), detections, decision, features)
 
