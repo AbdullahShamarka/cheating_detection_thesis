@@ -29,17 +29,25 @@ class YOLODetector:
 
     def has_forbidden_object(self, detections):
         person_count = 0
+        reasons = []
 
         for det in detections:
             label = det["label"]
+            conf = det["confidence"]
 
             if label == "person":
                 person_count += 1
-            elif label in self.forbidden_classes:
-                return True, [f"forbidden_object:{label}"]
+                continue
 
-        # extra person rule
+            if label == "cell phone":
+                if conf >= 0.65:
+                    reasons.append("forbidden_object:cell phone")
+                continue
+
+            if label in self.forbidden_classes:
+                reasons.append(f"forbidden_object:{label}")
+
         if person_count > 1:
-            return True, ["forbidden_object:extra_person"]
+            reasons.append("forbidden_object:extra_person")
 
-        return False, []
+        return (len(reasons) > 0), reasons

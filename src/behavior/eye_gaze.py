@@ -87,9 +87,9 @@ class EyeGazeEstimator:
 
     def _classify_direction(self, horizontal_ratio, vertical_ratio):
         # Horizontal first
-        if horizontal_ratio < 0.35:
+        if horizontal_ratio < 0.40:
             return "left"
-        if horizontal_ratio > 0.65:
+        if horizontal_ratio > 0.60:
             return "right"
 
         # Vertical

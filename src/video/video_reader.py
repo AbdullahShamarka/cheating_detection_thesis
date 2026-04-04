@@ -16,11 +16,19 @@ class VideoReader:
         if not cap.isOpened():
             raise RuntimeError(f"Could not open video source: {self.source}")
 
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        if fps is None or fps <= 0:
+            fps = 30.0
+
         try:
+            frame_index = 0
             while True:
                 ret, frame = cap.read()
                 if not ret:
                     break
-                yield frame
+
+                timestamp_sec = frame_index / fps
+                yield frame_index, timestamp_sec, frame
+                frame_index += 1
         finally:
             cap.release()
