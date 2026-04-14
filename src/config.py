@@ -30,16 +30,17 @@ class RuleConfig:
     use_baseline: bool = True
 
     head_yaw_threshold: float = 25.0
-    head_pitch_down_threshold: float = 18.0
+    head_pitch_down_threshold: float = 16.0
 
     gaze_away_min_frames: int = 10
-    downward_attention_min_frames: int = 8
+    downward_attention_min_frames: int = 6
     head_turn_min_frames: int = 12
-    mouth_activity_min_frames: int = 8
+    mouth_activity_min_frames: int = 14
     body_missing_min_frames: int = 15
     leaning_min_frames: int = 8
+    short_glance_min_events: int = 4
 
-    mouth_open_threshold: float = 0.08
+    mouth_open_threshold: float = 0.11
     lean_threshold: float = 0.18
 
 

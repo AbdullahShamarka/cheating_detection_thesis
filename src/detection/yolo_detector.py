@@ -40,7 +40,7 @@ class YOLODetector:
                 continue
 
             if label == "cell phone":
-                if conf >= 0.65:
+                if conf >= 0.90:
                     reasons.append("forbidden_object:cell phone")
                 continue
 

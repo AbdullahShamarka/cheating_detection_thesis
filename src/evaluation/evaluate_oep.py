@@ -49,7 +49,7 @@ def merge_gt_intervals(gt_intervals, max_gap_sec=8.0):
 
 def evaluate_subject(subject_dir: str):
     subject_path = Path(subject_dir)
-    gt_path = subject_path / "gt5.txt"
+    gt_path = subject_path / "gt6.txt"
     video_path = find_webcam_video(subject_path)
 
     output_csv = Path("outputs/alerts") / f"{subject_path.name}_predictions.csv"
@@ -94,4 +94,4 @@ def evaluate_subject(subject_dir: str):
 
 
 if __name__ == "__main__":
-    evaluate_subject("data/raw/subject5")
+    evaluate_subject("data/raw/subject6")
