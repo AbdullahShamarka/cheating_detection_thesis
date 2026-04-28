@@ -2,10 +2,22 @@ from ultralytics import YOLO
 
 
 class YOLODetector:
-    def __init__(self, yolo_config):
+    def __init__(
+        self,
+        yolo_config,
+        use_multicam_webcam_phone_threshold: bool = False,
+        use_glasses_phone_threshold: bool = False,
+    ):
         self.model = YOLO(yolo_config.model_path)
         self.conf_threshold = yolo_config.conf_threshold
         self.forbidden_classes = set(yolo_config.forbidden_classes)
+
+        if use_multicam_webcam_phone_threshold:
+            self.phone_conf_threshold = yolo_config.multicam_webcam_phone_conf_threshold
+        elif use_glasses_phone_threshold:
+            self.phone_conf_threshold = yolo_config.glasses_phone_conf_threshold
+        else:
+            self.phone_conf_threshold = yolo_config.phone_conf_threshold
 
     def detect(self, frame):
         results = self.model.predict(frame, conf=self.conf_threshold, verbose=False)
@@ -40,7 +52,7 @@ class YOLODetector:
                 continue
 
             if label == "cell phone":
-                if conf >= 0.90:
+                if conf >= self.phone_conf_threshold:
                     reasons.append("forbidden_object:cell phone")
                 continue
 

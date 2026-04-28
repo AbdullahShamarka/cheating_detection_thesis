@@ -47,6 +47,16 @@ def load_prediction_intervals(
     post_pad_sec=2.0,
     min_duration_sec=1.5,
 ):
+    """
+    Convert frame-level positive statuses into predicted time intervals.
+
+    Notes:
+    - Rows with status in positive_statuses are treated as positive evidence.
+    - Nearby positive timestamps are grouped if separated by <= max_gap_sec.
+    - Intervals are padded before/after to tolerate slight boundary shifts.
+    - Resulting intervals are merged again after padding.
+    - Very short intervals are removed.
+    """
     if positive_statuses is None:
         positive_statuses = {"suspicious", "cheating"}
 
@@ -152,9 +162,13 @@ def interval_overlap(a_start, a_end, b_start, b_end, tolerance_sec=2.0):
 
 def evaluate_intervals(gt_intervals, pred_intervals, tolerance_sec=2.0):
     """
-    One-to-one interval matching with boundary tolerance:
+    Strict one-to-one interval matching:
     - each GT interval can match at most one predicted interval
     - each predicted interval can match at most one GT interval
+
+    This metric penalizes fragmented predictions. If the system splits one
+    cheating episode into multiple predicted intervals, only one may count as TP
+    and the extra overlapping predicted intervals may count as FP.
     """
     matched_gt = set()
     matched_pred = set()
@@ -194,4 +208,190 @@ def evaluate_intervals(gt_intervals, pred_intervals, tolerance_sec=2.0):
         "precision": precision,
         "recall": recall,
         "f1": f1,
+    }
+
+
+def evaluate_intervals_many_to_one(gt_intervals, pred_intervals, tolerance_sec=2.0):
+    """
+    Many-to-one / episode-coverage interval matching:
+    - a GT interval is counted as detected if at least one prediction overlaps it
+    - a predicted interval is counted as false positive only if it overlaps no GT interval
+
+    This metric is more forgiving when the model detects the same cheating
+    episode with multiple predicted intervals.
+    """
+    matched_gt = set()
+    matched_pred = set()
+
+    for gi, gt in enumerate(gt_intervals):
+        for pi, pred in enumerate(pred_intervals):
+            overlap = interval_overlap(
+                gt["start"], gt["end"],
+                pred["start"], pred["end"],
+                tolerance_sec=tolerance_sec,
+            )
+
+            if overlap > 0:
+                matched_gt.add(gi)
+                matched_pred.add(pi)
+
+    tp = len(matched_gt)
+    fp = len(pred_intervals) - len(matched_pred)
+    fn = len(gt_intervals) - len(matched_gt)
+
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+    f1 = (
+        2 * precision * recall / (precision + recall)
+        if (precision + recall) > 0
+        else 0.0
+    )
+
+    return {
+        "tp": tp,
+        "fp": fp,
+        "fn": fn,
+        "precision": precision,
+        "recall": recall,
+        "f1": f1,
+    }
+
+
+def explain_interval_matches(gt_intervals, pred_intervals, tolerance_sec=2.0):
+    """
+    Debug helper for strict one-to-one matching.
+
+    Returns:
+    - matches: GT/pred interval pairs that were matched
+    - unmatched_predictions: predicted intervals counted as FP
+    - unmatched_ground_truth: GT intervals counted as FN
+    """
+    matched_gt = set()
+    matched_pred = set()
+    matches = []
+
+    for gi, gt in enumerate(gt_intervals):
+        for pi, pred in enumerate(pred_intervals):
+            if pi in matched_pred:
+                continue
+
+            overlap = interval_overlap(
+                gt["start"], gt["end"],
+                pred["start"], pred["end"],
+                tolerance_sec=tolerance_sec,
+            )
+
+            if overlap > 0:
+                matched_gt.add(gi)
+                matched_pred.add(pi)
+                matches.append({
+                    "gt_index": gi,
+                    "pred_index": pi,
+                    "gt": gt,
+                    "pred": pred,
+                    "overlap_sec": overlap,
+                })
+                break
+
+    unmatched_predictions = [
+        {
+            "pred_index": pi,
+            "pred": pred,
+        }
+        for pi, pred in enumerate(pred_intervals)
+        if pi not in matched_pred
+    ]
+
+    unmatched_ground_truth = [
+        {
+            "gt_index": gi,
+            "gt": gt,
+        }
+        for gi, gt in enumerate(gt_intervals)
+        if gi not in matched_gt
+    ]
+
+    return {
+        "matches": matches,
+        "unmatched_predictions": unmatched_predictions,
+        "unmatched_ground_truth": unmatched_ground_truth,
+    }
+
+
+def explain_interval_matches_many_to_one(gt_intervals, pred_intervals, tolerance_sec=2.0):
+    """
+    Debug helper for many-to-one matching.
+
+    Returns:
+    - matched_ground_truth: GT intervals that had at least one overlapping prediction
+    - matched_predictions: predicted intervals that overlapped at least one GT
+    - unmatched_predictions: predicted intervals counted as FP under many-to-one
+    - unmatched_ground_truth: GT intervals counted as FN under many-to-one
+    - overlap_pairs: all GT/pred overlap pairs
+    """
+    matched_gt = set()
+    matched_pred = set()
+    overlap_pairs = []
+
+    for gi, gt in enumerate(gt_intervals):
+        for pi, pred in enumerate(pred_intervals):
+            overlap = interval_overlap(
+                gt["start"], gt["end"],
+                pred["start"], pred["end"],
+                tolerance_sec=tolerance_sec,
+            )
+
+            if overlap > 0:
+                matched_gt.add(gi)
+                matched_pred.add(pi)
+                overlap_pairs.append({
+                    "gt_index": gi,
+                    "pred_index": pi,
+                    "gt": gt,
+                    "pred": pred,
+                    "overlap_sec": overlap,
+                })
+
+    matched_ground_truth = [
+        {
+            "gt_index": gi,
+            "gt": gt,
+        }
+        for gi, gt in enumerate(gt_intervals)
+        if gi in matched_gt
+    ]
+
+    matched_predictions = [
+        {
+            "pred_index": pi,
+            "pred": pred,
+        }
+        for pi, pred in enumerate(pred_intervals)
+        if pi in matched_pred
+    ]
+
+    unmatched_predictions = [
+        {
+            "pred_index": pi,
+            "pred": pred,
+        }
+        for pi, pred in enumerate(pred_intervals)
+        if pi not in matched_pred
+    ]
+
+    unmatched_ground_truth = [
+        {
+            "gt_index": gi,
+            "gt": gt,
+        }
+        for gi, gt in enumerate(gt_intervals)
+        if gi not in matched_gt
+    ]
+
+    return {
+        "matched_ground_truth": matched_ground_truth,
+        "matched_predictions": matched_predictions,
+        "unmatched_predictions": unmatched_predictions,
+        "unmatched_ground_truth": unmatched_ground_truth,
+        "overlap_pairs": overlap_pairs,
     }

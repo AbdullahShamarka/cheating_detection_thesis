@@ -1,9 +1,9 @@
 from pathlib import Path
 
 from src.config import AppConfig
-from src.pipeline import CheatingDetectionPipeline
+from src.multicam.dual_pipeline import DualCameraFusionPipeline
 from src.evaluation.gt_parser import parse_gt_file
-from src.evaluation.prediction_logger import PredictionLogger
+from src.evaluation.fused_prediction_logger import FusedPredictionLogger
 from src.evaluation.interval_metrics import (
     load_prediction_intervals,
     attach_interval_reasons,
@@ -20,12 +20,14 @@ def find_webcam_video(subject_dir: Path):
     return avi_files[0]
 
 
+def find_glasses_video(subject_dir: Path):
+    avi_files = sorted(subject_dir.glob("*2.avi"))
+    if not avi_files:
+        raise FileNotFoundError(f"No glasses video (*2.avi) found in {subject_dir}")
+    return avi_files[0]
+
+
 def merge_gt_intervals(gt_intervals, max_gap_sec=8.0):
-    """
-    Merge adjacent/nearby ground-truth intervals into broader cheating episodes.
-    This is useful when the dataset annotates multiple short sub-events inside
-    one larger cheating episode.
-    """
     if not gt_intervals:
         return []
 
@@ -49,20 +51,29 @@ def merge_gt_intervals(gt_intervals, max_gap_sec=8.0):
     return merged
 
 
-def evaluate_subject(subject_dir: str):
+def evaluate_subject_multicam(subject_dir: str):
     subject_path = Path(subject_dir)
     gt_path = subject_path / "gt7.txt"
-    video_path = find_webcam_video(subject_path)
 
-    output_csv = Path("outputs/alerts") / f"{subject_path.name}_predictions.csv"
+    webcam_video_path = find_webcam_video(subject_path)
+    glasses_video_path = find_glasses_video(subject_path)
+
+    output_csv = Path("outputs/alerts") / f"{subject_path.name}_multicam_predictions.csv"
 
     config = AppConfig()
-    config.video.input_path = str(video_path)
+    config.video.input_path = str(webcam_video_path)
     config.video.use_webcam = False
     config.video.show_window = False
 
-    logger = PredictionLogger(str(output_csv))
-    pipeline = CheatingDetectionPipeline(config, prediction_logger=logger)
+    config.multicam.enabled = True
+    config.multicam.glasses_input_path = str(glasses_video_path)
+
+    config.glasses.enabled = True
+    config.glasses.confirmation_window_size = 5
+    config.glasses.min_confirmed_frames = 2
+
+    logger = FusedPredictionLogger(str(output_csv))
+    pipeline = DualCameraFusionPipeline(config, prediction_logger=logger)
     pipeline.run()
 
     gt_intervals = parse_gt_file(str(gt_path))
@@ -76,7 +87,8 @@ def evaluate_subject(subject_dir: str):
     debug_info = explain_interval_matches(gt_intervals, pred_intervals)
 
     print(f"\nSubject: {subject_path.name}")
-    print(f"Video: {video_path.name}")
+    print(f"Webcam video: {webcam_video_path.name}")
+    print(f"Glasses video: {glasses_video_path.name}")
     print(f"GT intervals: {len(gt_intervals)}")
     print(f"Pred intervals: {len(pred_intervals)}")
 
@@ -129,4 +141,4 @@ def evaluate_subject(subject_dir: str):
 
 
 if __name__ == "__main__":
-    evaluate_subject("data/raw/subject7")
+    evaluate_subject_multicam("data/raw/subject7")
